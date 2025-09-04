@@ -45,15 +45,15 @@
         <section class="card control-panel">
             <h3>ML Pipeline Control</h3>
             <div class="button-group">
-                <button onclick="MLPlatform.loadData()" class="btn-primary">Load Data</button>
-                <button onclick="MLPlatform.trainModel()" id="trainBtn" class="btn-primary" disabled>Train Model</button>
-                <button onclick="MLPlatform.predict()" id="predictBtn" class="btn-primary" disabled>Predict Price</button>
+                <button onclick="loadData()" class="btn-primary">Load Data</button>
+                <button onclick="trainModel()" id="trainBtn" class="btn-primary" disabled>Train Model</button>
+                <button onclick="predict()" id="predictBtn" class="btn-primary" disabled>Predict Price</button>
             </div>
             
             <div class="controls-row">
                 <div class="control-group">
                     <label for="cryptoSelect">Cryptocurrency:</label>
-                    <select id="cryptoSelect" onchange="MLPlatform.selectCrypto()">
+                    <select id="cryptoSelect" onchange="selectCrypto()">
                         <optgroup label="ISO20022 Enhanced">
                             <option value="xrp" selected>XRP - Payment Rail</option>
                             <option value="xlm">Stellar (XLM)</option>
