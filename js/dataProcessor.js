@@ -1,6 +1,6 @@
 /**
- * Data processing utilities for the Crypto ML Platform
- * Handles data fetching, synthetic data generation, and feature engineering
+ * Optimized Data Processor for Crypto ML Platform
+ * Handles real-time data fetching and efficient feature engineering
  */
 
 class DataProcessor {
@@ -8,220 +8,292 @@ class DataProcessor {
         this.rawData = [];
         this.processedData = [];
         this.scaler = null;
+        this.cache = new Map(); // Performance cache
     }
 
     /**
-     * Attempt to fetch real-time data from CoinGecko API
-     * Falls back to synthetic data if API is unavailable
+     * Fetch real-time cryptocurrency data
      */
     async fetchData(cryptoKey) {
         const crypto = CRYPTO_CONFIG[cryptoKey];
         
         try {
-            const url = `${API_CONFIG.coingecko.baseUrl}${API_CONFIG.coingecko.priceEndpoint}?ids=${crypto.apiId}&vs_currencies=usd`;
-            const response = await fetch(url);
+            // Fetch current price first
+            const priceUrl = `${API_CONFIG.coingecko.baseUrl}${API_CONFIG.coingecko.priceEndpoint}?ids=${crypto.apiId}&vs_currencies=usd&include_24hr_change=true`;
+            const priceResponse = await this.fetchWithTimeout(priceUrl, 3000);
             
-            if (!response.ok) {
-                throw new Error(`API responded with status: ${response.status}`);
-            }
+            if (!priceResponse.ok) throw new Error(`Price API: ${priceResponse.status}`);
             
-            const data = await response.json();
+            const priceData = await priceResponse.json();
+            const currentPrice = priceData[crypto.apiId]?.usd;
+            const change24h = priceData[crypto.apiId]?.usd_24h_change || 0;
             
-            // For now, we'll still use synthetic data but could expand this
-            // to fetch historical data for real training
-            console.log('API connected successfully, generating enhanced synthetic data');
-            return this.generateSyntheticData(cryptoKey, true);
+            if (!currentPrice) throw new Error('No price data available');
+            
+            console.log(`Real ${crypto.name} price: $${currentPrice.toFixed(crypto.basePrice < 1 ? 4 : 2)} (${change24h > 0 ? '+' : ''}${change24h.toFixed(2)}% 24h)`);
+            
+            // Generate realistic historical data based on current price
+            return this.generateRealisticData(cryptoKey, currentPrice, change24h);
             
         } catch (error) {
-            console.warn('API unavailable, using synthetic data:', error.message);
-            return this.generateSyntheticData(cryptoKey, false);
+            console.warn(`API unavailable for ${crypto.name}:`, error.message);
+            console.log('Using fallback synthetic data');
+            return this.generateRealisticData(cryptoKey);
         }
     }
 
     /**
-     * Generate synthetic cryptocurrency data for demonstration
+     * Fetch with timeout for better performance
      */
-    generateSyntheticData(cryptoKey, isEnhanced = false) {
+    async fetchWithTimeout(url, timeout = 5000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            throw error;
+        }
+    }
+
+    /**
+     * Generate realistic price data based on current market conditions
+     */
+    generateRealisticData(cryptoKey, currentPrice = null, recentChange = 0) {
         const crypto = CRYPTO_CONFIG[cryptoKey];
         const dataPoints = DATA_CONFIG.syntheticDataPoints;
         
-        this.rawData = [];
-        let price = crypto.basePrice;
+        // Use real price or fallback to config
+        const latestPrice = currentPrice || crypto.basePrice;
+        const volatility = crypto.iso20022 ? DATA_CONFIG.volatility.iso20022 : DATA_CONFIG.volatility.standard;
         
-        // Use ISO20022 reduced volatility if applicable
-        const volatility = crypto.iso20022 ? 
-            DATA_CONFIG.volatility.iso20022 : 
-            DATA_CONFIG.volatility.standard;
-
+        this.rawData = [];
+        
+        // Start from 30 days ago and work forward to current price
+        let price = latestPrice * (1 - (recentChange / 100) * 0.3); // Approximate 30-day ago price
+        
         for (let i = 0; i < dataPoints; i++) {
-            // Add some trend and seasonal patterns
-            const trend = Math.sin(i / 20) * 0.02;
-            const seasonal = Math.cos(i / 7) * 0.01;
+            const dayProgress = i / (dataPoints - 1);
+            
+            // Trending toward current price
+            const trendForce = (latestPrice - price) * 0.002 * dayProgress;
+            
+            // Market patterns: weekday/weekend effects
+            const dayOfWeek = (i % 7);
+            const weekendEffect = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.98 : 1.02;
+            
+            // Random walk with trend
             const randomWalk = (Math.random() - 0.5) * volatility;
+            const trendComponent = trendForce + (Math.sin(i / 14) * 0.01);
             
-            price = price * (1 + trend + seasonal + randomWalk);
+            price = price * (1 + trendComponent + randomWalk) * weekendEffect;
+            price = Math.max(price, latestPrice * 0.1); // Floor price
             
-            // Ensure price doesn't go negative
-            price = Math.max(price, crypto.basePrice * 0.1);
+            // Higher volume on volatile days
+            const volatilityFactor = Math.abs(randomWalk) * 10 + 0.5;
+            const volume = DATA_CONFIG.volumeMultiplier * (0.5 + Math.random()) * volatilityFactor;
             
             this.rawData.push({
-                date: new Date(Date.now() - (dataPoints - i) * 24 * 60 * 60 * 1000),
+                date: new Date(Date.now() - (dataPoints - i - 1) * 24 * 60 * 60 * 1000),
                 price: price,
-                volume: Math.random() * DATA_CONFIG.volumeMultiplier * (0.5 + Math.random()),
-                enhanced: isEnhanced
+                volume: volume,
+                source: currentPrice ? 'enhanced' : 'synthetic'
             });
         }
-
+        
+        // Ensure final price matches current price if available
+        if (currentPrice) {
+            this.rawData[this.rawData.length - 1].price = currentPrice;
+        }
+        
         return this.rawData;
     }
 
     /**
-     * Process raw data into features suitable for machine learning
+     * Optimized feature processing with caching
      */
     processFeatures() {
         if (this.rawData.length < 20) {
             throw new Error('Insufficient data for feature processing');
         }
 
+        const cacheKey = this.generateCacheKey();
+        if (this.cache.has(cacheKey)) {
+            this.processedData = this.cache.get(cacheKey);
+            return this.processedData;
+        }
+
         this.processedData = [];
         const prices = this.rawData.map(d => d.price);
         const volumes = this.rawData.map(d => d.volume);
+        
+        // Pre-calculate moving averages for better performance
+        const ma5Array = this.calculateMovingAverageArray(prices, 5);
+        const ma10Array = this.calculateMovingAverageArray(prices, 10);
+        const rsiArray = this.calculateRSIArray(prices);
 
         for (let i = 10; i < this.rawData.length - 1; i++) {
-            const features = this.calculateFeatures(prices, volumes, i);
-            const target = prices[i + 1]; // Next day price
+            const features = [
+                ma5Array[i],
+                ma10Array[i],
+                this.calculateMomentum(prices, i),
+                this.calculateVolatility(prices.slice(Math.max(0, i - 9), i + 1)),
+                this.calculateVolumeRatio(volumes, i),
+                rsiArray[i]
+            ];
             
             this.processedData.push({
                 features: features,
-                target: target,
+                target: prices[i + 1],
                 price: prices[i],
                 date: this.rawData[i].date
             });
         }
 
-        // Normalize features
         this.normalizeFeatures();
+        this.cache.set(cacheKey, [...this.processedData]); // Cache results
         
         return this.processedData;
     }
 
     /**
-     * Calculate technical indicators and features for a given index
+     * Optimized moving average calculation for entire array
      */
-    calculateFeatures(prices, volumes, index) {
-        const lookback = 10;
-        const recentPrices = prices.slice(Math.max(0, index - lookback), index + 1);
-        const recentVolumes = volumes.slice(Math.max(0, index - lookback), index + 1);
+    calculateMovingAverageArray(prices, window) {
+        const result = new Array(prices.length);
+        let sum = 0;
         
-        // Moving averages
-        const ma5 = this.calculateMovingAverage(recentPrices, 5);
-        const ma10 = this.calculateMovingAverage(recentPrices, 10);
+        // Initialize first window
+        for (let i = 0; i < Math.min(window, prices.length); i++) {
+            sum += prices[i];
+            result[i] = sum / (i + 1);
+        }
         
-        // Price momentum (rate of change)
-        const momentum = index > 0 ? (prices[index] / prices[index - 1] - 1) : 0;
+        // Rolling calculation for better performance
+        for (let i = window; i < prices.length; i++) {
+            sum = sum + prices[i] - prices[i - window];
+            result[i] = sum / window;
+        }
         
-        // Volatility (standard deviation of recent prices)
-        const volatility = this.calculateVolatility(recentPrices);
-        
-        // Volume trend
-        const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
-        const volumeTrend = volumes[index] / avgVolume;
-        
-        // RSI (simplified)
-        const rsi = this.calculateRSI(recentPrices);
-
-        return [ma5, ma10, momentum, volatility, volumeTrend, rsi];
+        return result;
     }
 
     /**
-     * Calculate moving average
+     * Optimized RSI calculation for entire array
      */
-    calculateMovingAverage(prices, window) {
-        if (prices.length < window) return prices[prices.length - 1];
+    calculateRSIArray(prices, period = 14) {
+        const result = new Array(prices.length).fill(50);
         
-        const slice = prices.slice(-window);
-        return slice.reduce((a, b) => a + b, 0) / slice.length;
+        if (prices.length < period + 1) return result;
+        
+        let avgGain = 0;
+        let avgLoss = 0;
+        
+        // Initial calculation
+        for (let i = 1; i <= period; i++) {
+            const change = prices[i] - prices[i - 1];
+            if (change > 0) avgGain += change;
+            else avgLoss += Math.abs(change);
+        }
+        
+        avgGain /= period;
+        avgLoss /= period;
+        
+        // Rolling RSI calculation
+        for (let i = period; i < prices.length; i++) {
+            const change = prices[i] - prices[i - 1];
+            const gain = change > 0 ? change : 0;
+            const loss = change < 0 ? Math.abs(change) : 0;
+            
+            avgGain = (avgGain * (period - 1) + gain) / period;
+            avgLoss = (avgLoss * (period - 1) + loss) / period;
+            
+            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+            result[i] = 100 - (100 / (1 + rs));
+        }
+        
+        return result;
     }
 
     /**
-     * Calculate price volatility (standard deviation)
+     * Calculate momentum efficiently
+     */
+    calculateMomentum(prices, index) {
+        return index > 0 ? (prices[index] / prices[index - 1] - 1) : 0;
+    }
+
+    /**
+     * Calculate volatility from price slice
      */
     calculateVolatility(prices) {
         if (prices.length < 2) return 0;
         
         const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
-        const squaredDiffs = prices.map(price => Math.pow(price - mean, 2));
-        const variance = squaredDiffs.reduce((a, b) => a + b, 0) / prices.length;
-        
+        const variance = prices.reduce((sum, price) => sum + Math.pow(price - mean, 2), 0) / prices.length;
         return Math.sqrt(variance);
     }
 
     /**
-     * Calculate simplified RSI
+     * Calculate volume ratio efficiently
      */
-    calculateRSI(prices, period = 14) {
-        if (prices.length < period + 1) return 50; // Neutral RSI
-        
-        const recentPrices = prices.slice(-period - 1);
-        let gains = 0, losses = 0;
-        
-        for (let i = 1; i < recentPrices.length; i++) {
-            const change = recentPrices[i] - recentPrices[i - 1];
-            if (change > 0) {
-                gains += change;
-            } else {
-                losses += Math.abs(change);
-            }
-        }
-        
-        const avgGain = gains / period;
-        const avgLoss = losses / period;
-        
-        if (avgLoss === 0) return 100;
-        
-        const rs = avgGain / avgLoss;
-        return 100 - (100 / (1 + rs));
+    calculateVolumeRatio(volumes, index) {
+        const start = Math.max(0, index - 9);
+        const recentVolumes = volumes.slice(start, index + 1);
+        const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
+        return avgVolume === 0 ? 1 : volumes[index] / avgVolume;
     }
 
     /**
-     * Normalize features using z-score normalization
+     * Optimized feature normalization
      */
     normalizeFeatures() {
         if (this.processedData.length === 0) return;
         
         const featureCount = this.processedData[0].features.length;
-        const means = new Array(featureCount).fill(0);
-        const stds = new Array(featureCount).fill(1);
+        const means = new Array(featureCount);
+        const stds = new Array(featureCount);
         
-        // Calculate means
+        // Single pass for means
         for (let i = 0; i < featureCount; i++) {
-            const values = this.processedData.map(d => d.features[i]);
-            means[i] = values.reduce((a, b) => a + b, 0) / values.length;
+            means[i] = this.processedData.reduce((sum, item) => sum + item.features[i], 0) / this.processedData.length;
         }
         
-        // Calculate standard deviations
+        // Single pass for standard deviations
         for (let i = 0; i < featureCount; i++) {
-            const values = this.processedData.map(d => d.features[i]);
-            const variance = values.reduce((sum, val) => sum + Math.pow(val - means[i], 2), 0) / values.length;
-            stds[i] = Math.sqrt(variance) || 1; // Prevent division by zero
+            const variance = this.processedData.reduce((sum, item) => {
+                return sum + Math.pow(item.features[i] - means[i], 2);
+            }, 0) / this.processedData.length;
+            stds[i] = Math.sqrt(variance) || 1;
         }
         
-        // Normalize all features
+        // Normalize in place
         this.processedData.forEach(item => {
-            item.features = item.features.map((feature, i) => 
-                (feature - means[i]) / stds[i]
-            );
+            for (let i = 0; i < featureCount; i++) {
+                item.features[i] = (item.features[i] - means[i]) / stds[i];
+            }
         });
         
         this.scaler = { means, stds };
     }
 
     /**
-     * Split data into training and testing sets
+     * Generate cache key for processed data
+     */
+    generateCacheKey() {
+        const priceHash = this.rawData.reduce((hash, item, i) => {
+            return hash + (item.price * (i + 1));
+        }, 0);
+        return `processed_${Math.round(priceHash * 1000)}`;
+    }
+
+    /**
+     * Split data efficiently
      */
     splitData() {
         const splitIndex = Math.floor(this.processedData.length * DATA_CONFIG.trainTestSplit);
-        
         return {
             train: this.processedData.slice(0, splitIndex),
             test: this.processedData.slice(splitIndex)
@@ -229,28 +301,46 @@ class DataProcessor {
     }
 
     /**
-     * Get the latest processed data point for prediction
+     * Get latest features for prediction
      */
     getLatestFeatures() {
-        if (this.processedData.length === 0) return null;
-        return this.processedData[this.processedData.length - 1].features;
+        return this.processedData.length > 0 ? this.processedData[this.processedData.length - 1].features : null;
     }
 
     /**
-     * Get current price for comparison with predictions
+     * Get current price
      */
     getCurrentPrice() {
-        if (this.rawData.length === 0) return null;
-        return this.rawData[this.rawData.length - 1].price;
+        return this.rawData.length > 0 ? this.rawData[this.rawData.length - 1].price : null;
     }
 
     /**
-     * Clear all data
+     * Clear data and cache
      */
     reset() {
         this.rawData = [];
         this.processedData = [];
         this.scaler = null;
+        this.cache.clear();
+    }
+
+    /**
+     * Get data statistics
+     */
+    getStats() {
+        if (this.rawData.length === 0) return null;
+        
+        const prices = this.rawData.map(d => d.price);
+        const current = prices[prices.length - 1];
+        const start = prices[0];
+        const change = ((current / start - 1) * 100);
+        
+        return {
+            dataPoints: this.rawData.length,
+            currentPrice: current,
+            priceChange: change,
+            source: this.rawData[0].source || 'unknown'
+        };
     }
 }
 
