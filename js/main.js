@@ -273,22 +273,57 @@ class MLPlatform {
     }
 }
 
-// Initialize platform when page loads
+// Global platform instance
 let platform = null;
 
+// Global functions for HTML onclick handlers
+function loadData() {
+    if (platform) {
+        return platform.loadData();
+    } else {
+        console.error('Platform not initialized');
+    }
+}
+
+function trainModel() {
+    if (platform) {
+        return platform.trainModel();
+    } else {
+        console.error('Platform not initialized');
+    }
+}
+
+function predict() {
+    if (platform) {
+        return platform.predict();
+    } else {
+        console.error('Platform not initialized');
+    }
+}
+
+function selectCrypto() {
+    if (platform) {
+        return platform.selectCrypto();
+    } else {
+        console.error('Platform not initialized');
+    }
+}
+
+// Initialize platform when page loads
 document.addEventListener('DOMContentLoaded', function() {
     try {
         platform = new MLPlatform();
         
-        // Make platform available globally for HTML onclick handlers
-window.MLPlatform = {
-    loadData: function() { return platform.loadData(); },
-    trainModel: function() { return platform.trainModel(); },
-    predict: function() { return platform.predict(); },
-    selectCrypto: function() { return platform.selectCrypto(); },
-    getStatus: function() { return platform.getStatus(); },
-    reset: function() { return platform.reset(); }
-};
+        // Make functions available globally
+        window.MLPlatform = {
+            loadData: loadData,
+            trainModel: trainModel,
+            predict: predict,
+            selectCrypto: selectCrypto,
+            getStatus: () => platform ? platform.getStatus() : null,
+            reset: () => platform ? platform.reset() : null
+        };
+        
         console.log('Crypto ML Platform ready!');
         
     } catch (error) {
