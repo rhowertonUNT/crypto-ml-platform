@@ -281,15 +281,14 @@ document.addEventListener('DOMContentLoaded', function() {
         platform = new MLPlatform();
         
         // Make platform available globally for HTML onclick handlers
-        window.MLPlatform = {
-            loadData: () => platform.loadData(),
-            trainModel: () => platform.trainModel(),
-            predict: () => platform.predict(),
-            selectCrypto: () => platform.selectCrypto(),
-            getStatus: () => platform.getStatus(),
-            reset: () => platform.reset()
-        };
-        
+window.MLPlatform = {
+    loadData: function() { return platform.loadData(); },
+    trainModel: function() { return platform.trainModel(); },
+    predict: function() { return platform.predict(); },
+    selectCrypto: function() { return platform.selectCrypto(); },
+    getStatus: function() { return platform.getStatus(); },
+    reset: function() { return platform.reset(); }
+};
         console.log('Crypto ML Platform ready!');
         
     } catch (error) {
