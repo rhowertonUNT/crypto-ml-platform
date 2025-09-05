@@ -174,6 +174,9 @@ class DataProcessor {
     }
 }
 
+// Make DataProcessor globally available
+window.DataProcessor = DataProcessor;
+
 // Initialize when DOM is ready  
 document.addEventListener('DOMContentLoaded', function() {
     window.dataProcessor = new DataProcessor();
