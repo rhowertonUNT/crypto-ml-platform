@@ -1,12 +1,4 @@
-// Emergency compatibility fix
-if (typeof DataProcessor === 'undefined') {
-    window.DataProcessor = class DataProcessor {
-        constructor() {
-            console.log('Emergency fallback mode');
-        }
-        init() { console.log('Platform ready in demo mode'); }
-    };
-}class DataProcessor {
+class DataProcessor {
     constructor() {
         this.apiKey = 'CG-7F3NdFPwg9hG1uAqECgLT468';
         this.baseURL = 'https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd';
@@ -182,8 +174,8 @@ if (typeof DataProcessor === 'undefined') {
     }
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize when DOM is ready  
+document.addEventListener('DOMContentLoaded', function() {
     window.dataProcessor = new DataProcessor();
     window.dataProcessor.init();
 });
