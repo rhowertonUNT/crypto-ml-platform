@@ -54,7 +54,7 @@ class DataProcessor {
             }
 
             const data = await response.json();
-            const currentPrice = data.ripple?.usd;
+            const currentPrice = parseFloat(data.data.priceUsd);
             
             if (!currentPrice) {
                 throw new Error('Invalid price data received');
