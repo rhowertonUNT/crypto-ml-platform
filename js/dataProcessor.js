@@ -6,11 +6,6 @@ class DataProcessor {
         this.updateInterval = null;
         this.lastUpdate = 0;
         this.features = [];
-        
-        // Bind methods
-        this.fetchRealData = this.fetchRealData.bind(this);
-        this.updatePrice = this.updatePrice.bind(this);
-        this.processFeatures = this.processFeatures.bind(this);
     }
 
     async init() {
