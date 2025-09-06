@@ -80,7 +80,7 @@ class MLPlatform {
             
             // Fetch data using DataProcessor
             await this.dataProcessor.fetchRealData();
-            const rawData = this.dataProcessor.generateDemoData();
+            const rawData = this.dataProcessor.cache.get('demoData') || [];
             
             // Process features
             const processedData = this.dataProcessor.processFeatures();
