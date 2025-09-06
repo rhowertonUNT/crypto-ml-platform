@@ -152,8 +152,19 @@ class DataProcessor {
     }
 
     // Compatibility method for main.js
-    async fetchData() {
-        return await this.fetchRealData();
+    fetchData(crypto = 'ripple') {
+        // Map UI names to API names
+        const cryptoMap = {
+            'XRP - Payment Rail': 'ripple',
+            'Stellar (XLM)': 'stellar',
+            'ripple': 'ripple',
+            'stellar': 'stellar'
+        };
+        
+        const apiName = cryptoMap[crypto] || 'ripple';
+        this.baseURL = `https://api.coingecko.com/api/v3/simple/price?ids=${apiName}&vs_currencies=usd&x_cg_demo_api_key=CG-7F3NdFPwg9hG1uAqECgLT468`;
+        
+        return this.fetchRealData();
     }
 
     // Clean up resources
