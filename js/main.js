@@ -79,7 +79,7 @@ class MLPlatform {
             this.uiManager.updateButtonStates({ dataLoaded: false, modelTrained: false });
             
             // Fetch data using DataProcessor
-            const rawData = await this.dataProcessor.fetchData(this.currentCrypto);
+            const rawData = await this.dataProcessor.fetchRealData();
             
             // Process features
             const processedData = this.dataProcessor.processFeatures();
