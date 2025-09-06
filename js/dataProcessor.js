@@ -151,6 +151,11 @@ class DataProcessor {
         }
     }
 
+    // Compatibility method for main.js
+    async fetchData() {
+        return await this.fetchRealData();
+    }
+
     // Clean up resources
     destroy() {
         if (this.updateInterval) {
