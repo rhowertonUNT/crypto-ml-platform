@@ -154,20 +154,27 @@ class DataProcessor {
     async fetchData(cryptoName) {
         console.log(`Fetching data for: ${cryptoName}`);
         
-        // Try to get real price first
-        await this.fetchRealData();
-        
-        // Generate historical data for the chart
-        const historicalData = this.generateHistoricalData();
-        
-        // Process features for ML
-        this.processFeatures();
-        
-        // Start price updates
-        this.startPriceUpdates();
-        
-        // Return data in format expected by chartManager
-        return historicalData;
+        try {
+            // Try to get real price first
+            await this.fetchRealData();
+            
+            // Generate historical data for the chart
+            const historicalData = this.generateHistoricalData();
+            
+            // Process features for ML
+            this.processFeatures();
+            
+            // Start price updates
+            this.startPriceUpdates();
+            
+            // Return data in format expected by chartManager
+            return historicalData;
+            
+        } catch (error) {
+            console.error('fetchData error:', error);
+            // Return empty array as fallback
+            return [];
+        }
     }
 }
 
