@@ -79,8 +79,11 @@ class MLPlatform {
             this.uiManager.updateButtonStates({ dataLoaded: false, modelTrained: false });
             
             // Fetch data using DataProcessor
-            await this.dataProcessor.fetchRealData();
-            const rawData = this.dataProcessor.cache.get('demoData') || [];
+            const rawData = await this.dataProcessor.fetchData(this.currentCrypto);
+            
+            if (!rawData || rawData.length === 0) {
+                throw new Error('No data received from API');
+            }
             
             // Process features
             const processedData = this.dataProcessor.processFeatures();
@@ -93,17 +96,16 @@ class MLPlatform {
             this.applicationState.isProcessing = false;
             
             // Update UI
-            const crypto = CRYPTO_CONFIG[this.currentCrypto];
-            const statusMessage = `✅ ${crypto.name} data loaded! ${rawData.length} data points processed`;
+            const statusMessage = `✅ Data loaded! ${rawData.length} data points processed`;
             this.uiManager.updateStatus(statusMessage, 'success');
             this.uiManager.updateButtonStates(this.applicationState);
             
-            console.log(`Data loaded for ${crypto.name}: ${rawData.length} points, ${processedData.length} processed features`);
+            console.log(`Data loaded: ${rawData.length} points, ${processedData.length} processed features`);
             
         } catch (error) {
             console.error('Data loading failed:', error);
             this.applicationState.isProcessing = false;
-            this.uiManager.showError(`Failed to load ${CRYPTO_CONFIG[this.currentCrypto].name} data: ${error.message}`);
+            this.uiManager.showError(`Failed to load data: ${error.message}`);
             this.uiManager.updateButtonStates({ dataLoaded: false, modelTrained: false });
         }
     }
