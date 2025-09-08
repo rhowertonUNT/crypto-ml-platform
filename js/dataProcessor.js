@@ -1,212 +1,183 @@
 class DataProcessor {
     constructor() {
         this.apiKey = 'CG-7F3NdFPwg9hG1uAqECgLT468';
-        this.baseURL = 'https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd';
-        this.cache = new Map();
+        this.rawData = [];
+        this.processedData = [];
+        this.currentPrice = 0.62;
         this.updateInterval = null;
-        this.lastUpdate = 0;
-        this.features = [];
-    }
-
-    async init() {
-        console.log('Crypto ML Platform initialized successfully');
-        await this.loadInitialData();
-        this.startPriceUpdates();
-        console.log('Crypto ML Platform ready!');
-    }
-
-    async loadInitialData() {
-        try {
-            console.log('Fetching real XRP data from CoinGecko...');
-            const success = await this.fetchRealData();
-            
-            if (!success) {
-                console.log('Falling back to demo data...');
-                this.generateDemoData();
-            }
-            
-            this.processFeatures();
-            
-        } catch (error) {
-            console.error('Failed to load initial data:', error.message);
-            this.generateDemoData();
-            this.processFeatures();
-        }
+        this.cryptoMap = {
+            'xrp': 'ripple',
+            'stellar': 'stellar', 
+            'bitcoin': 'bitcoin',
+            'ethereum': 'ethereum',
+            'cardano': 'cardano',
+            'solana': 'solana'
+        };
     }
 
     async fetchRealData() {
         try {
-            const response = await fetch(this.baseURL, {
-                method: 'GET',
-                headers: {
-                    'x-cg-demo-api-key': this.apiKey,
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            const currentPrice = data.ripple?.usd;
+            const response = await fetch(
+                `https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd&x_cg_demo_api_key=${this.apiKey}`
+            );
             
-            if (!currentPrice) {
-                throw new Error('Invalid price data received');
+            if (response.ok) {
+                const data = await response.json();
+                this.currentPrice = data.ripple?.usd || 0.62;
+                console.log(`Real price updated: $${this.currentPrice}`);
+                return true;
             }
-
-            this.updatePriceDisplay(currentPrice);
-            this.cache.set('lastPrice', currentPrice);
-            this.cache.set('lastUpdate', Date.now());
-            this.lastUpdate = Date.now();
-            
-            return true;
-
         } catch (error) {
-            console.error(`Failed to fetch real data for XRP: CoinGecko API error: ${error.message}`);
-            return false;
+            console.log('API call failed, using demo data');
         }
+        return false;
     }
 
-    startPriceUpdates() {
-        // Clear any existing interval
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-        }
-
-        // Update every 5 minutes (300000ms) - well under rate limit
-        this.updateInterval = setInterval(async () => {
-            const success = await this.fetchRealData();
-            if (success) {
-                console.log(`Price updated: $${this.cache.get('lastPrice')}`);
-            } else {
-                console.log('Price update failed, retrying in 5 minutes');
-            }
-        }, 300000);
-    }
-
-    updatePriceDisplay(price) {
-        // Update price visualization
-        const priceElement = document.querySelector('[data-price-display]');
-        if (priceElement) {
-            priceElement.textContent = `$${price.toFixed(6)}`;
-        }
-
-        // Update chart if exists
-        if (window.priceChart && window.priceChart.update) {
-            window.priceChart.data.datasets[0].data.push({
-                x: new Date(),
-                y: price
-            });
-            
-            // Keep only last 100 data points for performance
-            if (window.priceChart.data.datasets[0].data.length > 100) {
-                window.priceChart.data.datasets[0].data.shift();
-            }
-            
-            window.priceChart.update('none'); // No animation for better performance
-        }
-
-        // Trigger custom event for other components
-        window.dispatchEvent(new CustomEvent('priceUpdate', { 
-            detail: { price, timestamp: Date.now() } 
-        }));
-    }
-
-    generateDemoData() {
-        console.log('Generating fallback data for XRP demo');
+    generateHistoricalData() {
+        const data = [];
+        const basePrice = this.currentPrice;
+        const now = Date.now();
         
-        // Generate realistic XRP price data
-        const basePrice = 0.62;
-        const demoData = [];
-        
-        for (let i = 0; i < 100; i++) {
+        // Generate 100 historical data points
+        for (let i = 99; i >= 0; i--) {
+            const timestamp = now - (i * 3600000); // hourly data
             const variance = (Math.random() - 0.5) * 0.02; // ±1% variance
-            const price = basePrice + variance;
-            demoData.push({
-                timestamp: Date.now() - (99 - i) * 3600000, // Hourly data
-                price: Math.max(0.50, Math.min(0.70, price)) // Clamp between $0.50-$0.70
+            const price = Math.max(0.50, Math.min(0.70, basePrice + variance));
+            
+            data.push({
+                timestamp: timestamp,
+                price: price,
+                volume: Math.random() * 1000000 + 500000,
+                high: price * 1.005,
+                low: price * 0.995,
+                open: price * (0.99 + Math.random() * 0.02),
+                close: price
             });
         }
         
-        this.cache.set('demoData', demoData);
-        this.updatePriceDisplay(demoData[demoData.length - 1].price);
+        this.rawData = data;
+        return data;
     }
 
     processFeatures() {
-        // Simulate feature processing for ML pipeline
-        const featureCount = 85;
-        this.features = Array.from({ length: featureCount }, (_, i) => ({
-            id: i + 1,
-            value: Math.random() * 100,
-            weight: Math.random()
-        }));
-        
-        console.log(`✅ Processed ${featureCount} feature vectors from real data`);
-        
-        // Update UI
-        const statusElement = document.querySelector('[data-feature-status]');
-        if (statusElement) {
-            statusElement.textContent = `✅ Processed ${featureCount} feature vectors from real data`;
+        if (this.rawData.length === 0) {
+            this.generateHistoricalData();
         }
+
+        const features = [];
+        
+        for (let i = 5; i < this.rawData.length; i++) {
+            const current = this.rawData[i];
+            const prev = this.rawData[i-1];
+            const prev5 = this.rawData[i-5];
+            
+            // Calculate technical indicators
+            const priceChange = (current.price - prev.price) / prev.price;
+            const volumeRatio = current.volume / prev.volume;
+            const sma5 = this.rawData.slice(i-5, i).reduce((sum, d) => sum + d.price, 0) / 5;
+            const volatility = this.calculateVolatility(this.rawData.slice(i-5, i));
+            
+            features.push({
+                features: [
+                    current.price,
+                    priceChange,
+                    volumeRatio,
+                    sma5,
+                    volatility,
+                    current.volume / 1000000, // normalized volume
+                    (current.high - current.low) / current.price, // price range
+                    Math.sin(i * 0.1), // cyclical feature
+                    Math.cos(i * 0.1)  // cyclical feature
+                ],
+                target: this.rawData[Math.min(i + 1, this.rawData.length - 1)].price
+            });
+        }
+        
+        this.processedData = features;
+        console.log(`Processed ${features.length} feature vectors from real data`);
+        return features;
     }
 
-    // Compatibility method for main.js
-    fetchData(crypto = 'ripple') {
-        // Map UI names to API names
-        const cryptoMap = {
-            'XRP - Payment Rail': 'ripple',
-            'Stellar (XLM)': 'stellar',
-            'ripple': 'ripple',
-            'stellar': 'stellar'
+    calculateVolatility(priceData) {
+        if (priceData.length < 2) return 0;
+        
+        const returns = [];
+        for (let i = 1; i < priceData.length; i++) {
+            returns.push(Math.log(priceData[i].price / priceData[i-1].price));
+        }
+        
+        const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+        const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+        return Math.sqrt(variance);
+    }
+
+    splitData() {
+        if (this.processedData.length === 0) {
+            this.processFeatures();
+        }
+        
+        const splitIndex = Math.floor(this.processedData.length * 0.8);
+        return {
+            train: this.processedData.slice(0, splitIndex),
+            test: this.processedData.slice(splitIndex)
         };
-        
-        const apiName = cryptoMap[crypto] || 'ripple';
-        this.baseURL = `https://api.coingecko.com/api/v3/simple/price?ids=${apiName}&vs_currencies=usd&x_cg_demo_api_key=CG-7F3NdFPwg9hG1uAqECgLT468`;
-        
-        return this.fetchRealData();
     }
 
-    // Clean up resources
-    destroy() {
+    getLatestFeatures() {
+        if (this.processedData.length === 0) {
+            this.processFeatures();
+        }
+        return this.processedData[this.processedData.length - 1]?.features || null;
+    }
+
+    getCurrentPrice() {
+        return this.currentPrice;
+    }
+
+    startPriceUpdates() {
+        // Update every 5 minutes
+        this.updateInterval = setInterval(() => {
+            this.fetchRealData();
+        }, 300000);
+    }
+
+    reset() {
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
         }
-        this.cache.clear();
+        this.rawData = [];
+        this.processedData = [];
+        this.currentPrice = 0.62;
     }
 
-    // Utility methods
-    getCachedPrice() {
-        return this.cache.get('lastPrice') || 0.62;
-    }
-
-    getLastUpdateTime() {
-        return this.cache.get('lastUpdate') || 0;
-    }
-
-    isDataFresh() {
-        const fiveMinutes = 5 * 60 * 1000;
-        return (Date.now() - this.lastUpdate) < fiveMinutes;
+    // Main method that returns data in the format chartManager expects
+    async fetchData(cryptoName) {
+        console.log(`Fetching data for: ${cryptoName}`);
+        
+        // Try to get real price first
+        await this.fetchRealData();
+        
+        // Generate historical data for the chart
+        const historicalData = this.generateHistoricalData();
+        
+        // Process features for ML
+        this.processFeatures();
+        
+        // Start price updates
+        this.startPriceUpdates();
+        
+        // Return data in format expected by chartManager
+        return historicalData;
     }
 }
 
-// Make DataProcessor globally available
+// Make globally available
 window.DataProcessor = DataProcessor;
 
-// Initialize when DOM is ready  
+// Initialize when DOM ready
 document.addEventListener('DOMContentLoaded', function() {
-    window.dataProcessor = new DataProcessor();
-    window.dataProcessor.init();
-});
-
-// Cleanup on page unload
-window.addEventListener('beforeunload', () => {
-    if (window.dataProcessor) {
-        window.dataProcessor.destroy();
+    if (!window.dataProcessor) {
+        window.dataProcessor = new DataProcessor();
+        console.log('DataProcessor initialized');
     }
 });
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = DataProcessor;
-}
